@@ -1,167 +1,137 @@
-#!/usr/bin/env python3
+import socket
+import pickle
+import os
+import datetime
+import threading
+import sys
+import speech_recognition as sr
+from Personaje import *
 
+personajes = []
+BUFFER_SIZE = 1024
+HOST, PORT = sys.argv[1:3]
 
-from random import shuffle
-import pyaudio, wave, socket,time
-from pathlib import Path
+def CargarPersonajes():
+    personajes.append( Personaje("Sora", "Negro", "Negros", "Blanca", "Espada", "Hombre") )
+    personajes.append( Personaje("Cloud", "Rubio", "Azules", "Blanca", "Espada", "Hombre") )
+    personajes.append( Personaje("Terry", "Rubio", "Azules", "Blanca", "Gorra", "Hombre") )
+    personajes.append( Personaje("Samus", "Rubio", "Azules", "Blanca", "Cañon", "Mujer") )
+    personajes.append( Personaje("Ken", "Rubio", "Azules", "Blanca", "Nada", "Hombre") )
+    personajes.append( Personaje("Ryu", "Negro", "Negros", "Blanca", "Nada", "Hombre") )
+    personajes.append( Personaje("Mario", "Negro", "Cafes", "Blanca", "Nada", "Hombre") )
+    personajes.append( Personaje("Diddy Kong", "Cafe", "Negro", "Morena", "Banana", "Hombre") )
+    personajes.append( Personaje("Pit", "Cafe", "Cafes", "Blanca", "Arco", "Hombre") )
+    personajes.append( Personaje("Palutena", "Verde", "Negros", "Blanca", "Baston", "Mujer") )
+    personajes.append( Personaje("Joker", "Negro", "Negros", "Blanca", "Antifaz", "Hombre") )
 
-HOST = "192.168.1.64"  # The server's hostname or IP address
-PORT = 65432  # The port used by the server
-buffer_size = 1024
+def MostrarPersonajes():
+    for personaje in personajes:
+        personaje.DescripcionPersonaje()
 
-################################################################
-# Nombres de los personajes en ingles para que sea facil reconocerlos
-personajes = ['batman', 'superman', 'wonder woman', 'flash', 'green lantern', 'lex luthor', 'catwoman', 'joker',
-              'harley quinn', 'poison ivy']
-# Caracteristicas de cada personaje
-personajesC = [  # Arreglo bidimiensional
-    ["héroe", "rico", "capa", "negro", "sabe pelear", "hombre", "cabello corto", "inteligente", "batman"],
-    ["héroe", "vuela", "super fuerza", "visión láser", "hombre", "capa", "cabello corto", "veloz","superman"],
-    ["héroe", "vuela", "mujer", "cabello largo",  "super fuerza", "lazo","sabe pelear","wonder womam"],
-    ["héroe", "veloz", "hombre","sabe pelear", "rojo", "ágil", "cabello corto",  "flash"],
-    ["héroe", "super fuerza", "verde", "vuela", "hombre", "cabello corto", "green lantern"],
-    ["villano", "rico", "hombre", "inteligente", "calvo", "verde","lex luthor"],
-    ["villano", "mujer", "negro", "sabe pelear", "cabello corto", "ágil",  "catwoman"],
-    ["villano", "hombre", "inteligente", "cabello corto","payaso", "joker"],
-    ["villano", "mujer", "cabello largo",  "sabe pelear", "payaso", "ágil", "harley quinn"],
-    ["villano", "mujer", "cabello largo", "ágil", "verde", "poison ivy"]
-]
+def ObtenerMensajeVoz():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        r.adjust_for_ambient_noise(source)
+        os.system( "cls" )
+        MostrarPersonajes()
+        MostrarTiros(tiros_anteriores)
+        print( "Es tu turno de adivinar el personaje\nEscuchando ... ")
+        audio = r.listen(source)
 
+        try:    
+            return r.recognize_google(audio)	
+        except Exception as e:
+            return ""
 
-#######################################################################
-def verPersonajes():
-    global personajes, personajesC
-    print("******PERSONAJES******")
-    for i in range(0, len(personajes)):
-        print("{}:\t{}".format(personajes[i], personajesC[i]))
-    print("**********************")
+def ObtenerCaracteristica( texto ):
+    texto = texto.lower()
+    accesorios = ["Nada", "Espada", "Gorra", "Banana", "Baston", "Cañon","Arco"] # "tu personaje tiene <accesorio>"
+    nombres = ["Sora","Cloud","Terry","Samus","Ken","Ryu","Mario","Diddy Kong","Pit", "Palutena", "Joker"] #"tu personaje es <genero_nombre>"
+    generos = ["Mujer", "Hombre"]
+    caracteristicas = [" ojo", " cabello", " piel", " genero"]
+    
+    i = 0
+    for caracteristica in caracteristicas:
+        if( caracteristica in texto):
+            t = texto.split( caracteristica )
+            color = t[1].split(" ")
+            if( i == 0):
+                caracteristica = caracteristica + "s"
+            response = [caracteristica.replace(" ",""), color[1]]
+            return response
 
+        i = i + 1
+    
+    if( "tiene" in texto):
+        t = texto.split("tiene")
+        acc = t[1]
+        for accesorio in accesorios:           
+            if( accesorio in acc):
+             return ["accesorio", accesorio]             
+        return ["accesorio", "nada"]
+    else:
+        for genero in generos:
+            if( genero in texto):
+                return ["genero", genero]
+        
+        for nombre in nombres:
+            if( nombre.lower() in texto):
+                return ["nombre", nombre]
+    return ""
 
-def ocultarPersonajes(preg, resp):
-    global personajesC, personajes
+def MostrarTiros(tiros):
+    if(len(tiros) > 0):
+        print( "\tTiros hasta el momento: ")
+        for tiro in tiros:
+            print( "\t\t" + tiro[0] + " " + tiro[1] + ": " + tiro[2] )
 
-    if resp == "Si":
-        for x in range(len(personajesC)):
-            cont = 0
-            for y in range(len(personajesC[x])):
-                if (personajesC[x][y]) in preg:  # Si la característica está, se salta al siguiente personaje
-                    break
-                else:  # En caso de que no tenga es característica, el personaje se oculta
-                    cont += 1
-            if cont == len(personajesC[
-                               x]):  # Cuando se confirma que no se trata de un personaje, su nombre y características se ocultan
-                personajesC[x] = "-"
-                personajes[x] = "-"
-    if resp == "No":
-        for x in range(len(personajesC)):
-            cont = 0
-            for y in range(len(personajesC[x])):
-                if (personajesC[x][y]) in preg:  # Si está la característica, oculta al siguiente personaje
-                    personajesC[x] = "-"
-                    personajes[x] = "-"
-                    break # y pasa al siguiente
-    verPersonajes()
+if len(sys.argv) != 3:
+    print( "usage:", sys.argv[0], "<host> <port>" )
+    sys.exit(1)
 
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as TCPClientSocket:    
+    TCPClientSocket.connect((HOST, int(PORT) ))
 
-def GrabarPregunta():
-    chunk = 1024
-    sample_format = pyaudio.paInt16
-    channels = 2
-    fs = 44100
-    seconds = 3
-    filename = "audio.wav"
+    CargarPersonajes()
 
-    p = pyaudio.PyAudio()
-
-    print('Grabando')
-    stream = p.open(format=sample_format,
-                    channels=channels,
-                    rate=fs,
-                    frames_per_buffer=chunk,
-                    input=True)
-    frames = []
-    for i in range(0, int(fs / chunk * seconds)):
-        data = stream.read(chunk)
-        frames.append(data)
-
-    stream.stop_stream()
-    stream.close()
-
-    p.terminate()
-
-    print('Terminando de grabar')
-
-    wf = wave.open(filename, 'wb')
-    wf.setnchannels(channels)
-    wf.setsampwidth(p.get_sample_size(sample_format))
-    wf.setframerate(fs)
-    wf.writeframes(b''.join(frames))
-    wf.close()
-
-
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as TCPClientSocket:
-    TCPClientSocket.connect((HOST, PORT))
-    TCPClientSocket.sendall(b" ")
-    data = TCPClientSocket.recv(buffer_size)
-    Jugador = data.decode()
-    if (data.decode() == "JH"):  # Código para jugador host
-        numPlay = input("Ingrese el número de jugadores: \n")
-        TCPClientSocket.sendall(numPlay.encode())
-        data = TCPClientSocket.recv(buffer_size)  # Manda al servidor el número de jugadores
-
-        TCPClientSocket.sendall(b" ")
-        print("Esperando a otros jugadores...")
-        data = TCPClientSocket.recv(
-            buffer_size)  # Espera a que el servidor mande algo para que sepa que ya se ha cumplido la barrera
-        TCPClientSocket.sendall(b" ")
-
-    if (data.decode() == "ETC"):  # Código para otros jugadores
-        print("Esperando a otros jugadores...")
-        TCPClientSocket.sendall(b" ")
-        data = TCPClientSocket.recv(buffer_size)
-        TCPClientSocket.sendall(
-            b" ")  # Prácticamente solo sincroniza los enviar y recibir, si no luego hace cosas raras xD
-
-        time.sleep(1)
-    print("=======ADIVINA QUIÉN???=======\n")
-    while True:
-        termina=False
-        print("Espere su turno: ")
-        data = TCPClientSocket.recv(buffer_size)
-        if data.decode().startswith("Fin"): #Significa que ya hay un ganador
-            print(data.decode()) #Imprimir mensaje del jugador ganador
+    while(True):
+        jugadoresFaltantes = TCPClientSocket.recv(100)
+        os.system( "cls" )
+        if(  jugadoresFaltantes.decode() == "0"):
+            print( "Todos los jugadores se han unido ..." )
             break
-        verPersonajes()
-        # TCPClientSocket.sendall(coord.encode())
-        ##########################################
-        while True:
-            print("Debe decir una frase como 'El personaje vuela', 'El personaje es hombre',etc...")
-            coord = input("Pulse enter para grabar ")
-            GrabarPregunta()
-            TamAud = Path("audio.wav").stat().st_size
-            # print(str(TamAud))
-            TCPClientSocket.sendall(str(TamAud).encode())
-            with open("audio.wav", 'rb') as f:
-                for l in f:
-                    TCPClientSocket.sendall(l)
-            print("Terminando de enviar archivo")
-            respuesta = TCPClientSocket.recv(buffer_size)
-            if respuesta.decode() != '*':
-                if respuesta.decode().startswith("¡¡Felicidades"):
-                    print(respuesta.decode())
-                    print("Fin de la partida")
-                    termina=True
-                    break
-                else:
-                    print(respuesta.decode())
-                    ocultarPersonajes(respuesta[14:-6].decode(), (respuesta[-2:].decode()))
-                    break
-            else:
-                print("No pude capturar nada. Que fue lo que dijiste?\n")
-            if termina:
-                break
-        if termina:
-            break
+        else:
+            print( "Esperando a " + jugadoresFaltantes.decode() + " jugadores ..." )
+    
+    tiros_anteriores = []
+    
+    while(True):
+        print( "Esperando datos del servidor" )
+        dato = pickle.loads( TCPClientSocket.recv(BUFFER_SIZE) ) # [MI_TURNO?, QUIEN_TIENE_TURNO, TIRO_ANTERIOR, JUEGO_TERMINADO, RESULTADO, PERSONAJE]
 
-                
-           
+        if ( dato[3] ):
+            break
+        
+        if( dato[2] != ""):
+            tiros_anteriores = dato[2]
+        
+        if( dato[0] ):            
+            while(True):
+                texto = ObtenerMensajeVoz()
+                if (texto != ""):
+                    tiroCliente = ObtenerCaracteristica( texto )
+                    if( tiroCliente != ""):
+                        TCPClientSocket.sendall( pickle.dumps(tiroCliente) )
+                        resultado = TCPClientSocket.recv(BUFFER_SIZE)
+                        break
+                print(texto)
+                input( "Intentalo de nuevo. Pulsa enter para continuar ..." )
+        else:
+            os.system( "cls" )
+            MostrarPersonajes()
+            MostrarTiros(tiros_anteriores)
+            print( "Esperando a que el jugador " + str(dato[1]) + " termine su turno." )
+    os.system( "cls" )
+    MostrarPersonajes()
+    print( "El personaje era: " + dato[5] )
+    print( dato[4] )
